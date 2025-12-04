@@ -20,14 +20,19 @@ export function ResumeImporter() {
         formData.append('resume', file);
 
         try {
-            setStatus('Connecting to server...');
+            setStatus('Analyzing Resume...');
 
-            const response = await fetch('http://localhost:3000/api/parse-resume', {
+            // Use relative URL - works both locally and on Vercel
+            const apiUrl = import.meta.env.DEV
+                ? 'http://localhost:3000/api/parse-resume'
+                : '/api/parse-resume';
+
+            const response = await fetch(apiUrl, {
                 method: 'POST',
                 body: formData,
             });
 
-            setStatus('Processing response...');
+            setStatus('Processing...');
 
             const data = await response.json();
 
@@ -43,7 +48,7 @@ export function ResumeImporter() {
             setStatus(`Error: ${error.message}`);
 
             if (error.message.includes('Failed to fetch')) {
-                alert('Cannot connect to server. Make sure the Node.js server is running on port 3000.');
+                alert('Cannot connect to server. If running locally, make sure the Node.js server is running.');
             } else {
                 alert(error.message || 'Failed to import resume. Please try again.');
             }

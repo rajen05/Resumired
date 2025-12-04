@@ -206,9 +206,20 @@ export default async function handler(req, res) {
     }
 
     try {
-        const form = formidable({ maxFileSize: 10 * 1024 * 1024 });
+        const form = formidable({
+            maxFileSize: 10 * 1024 * 1024,
+            allowEmptyFiles: false,
+            keepExtensions: true
+        });
 
-        const [fields, files] = await form.parse(req);
+        // Promisify form parsing
+        const [fields, files] = await new Promise((resolve, reject) => {
+            form.parse(req, (err, fields, files) => {
+                if (err) reject(err);
+                else resolve([fields, files]);
+            });
+        });
+
         const file = files.resume?.[0];
 
         if (!file) {
@@ -218,6 +229,8 @@ export default async function handler(req, res) {
         let text = '';
         const filePath = file.filepath;
         const fileName = file.originalFilename || '';
+
+        console.log('Processing file:', fileName);
 
         if (fileName.toLowerCase().endsWith('.pdf')) {
             const dataBuffer = fs.readFileSync(filePath);
@@ -231,13 +244,22 @@ export default async function handler(req, res) {
         }
 
         // Clean up
-        fs.unlinkSync(filePath);
+        try {
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+        } catch (e) {
+            console.warn('Failed to delete temp file:', e);
+        }
 
         const parsedData = parseResumeText(text);
         return res.status(200).json(parsedData);
 
     } catch (error) {
         console.error('Parse error:', error);
-        return res.status(500).json({ error: 'Failed to parse resume: ' + error.message });
+        return res.status(500).json({
+            error: 'Failed to parse resume: ' + (error.message || 'Unknown error'),
+            details: error.toString()
+        });
     }
 }

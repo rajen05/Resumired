@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Button } from '../ui/Button';
 import { Upload, Loader2, FileText } from 'lucide-react';
 import { useResumeStore } from '../../store/useResumeStore';
+import { parseResumeFile } from '../../utils/resumeParser';
 
 export function ResumeImporter() {
     const fileInputRef = useRef(null);
@@ -21,40 +22,11 @@ export function ResumeImporter() {
         }
 
         setIsUploading(true);
-        setStatus('Uploading...');
-
-        const formData = new FormData();
-        formData.append('resume', file);
+        setStatus('Analyzing Resume...');
 
         try {
-            setStatus('Analyzing Resume...');
-
-            // Use relative URL - works both locally and on Vercel
-            const apiUrl = import.meta.env.DEV
-                ? 'http://localhost:3000/api/parse-resume'
-                : '/api/parse-resume';
-
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                body: formData,
-            });
-
-            setStatus('Processing...');
-
-            let data;
-            const contentType = response.headers.get("content-type");
-            if (contentType && contentType.indexOf("application/json") !== -1) {
-                data = await response.json();
-            } else {
-                // If response is not JSON, it's likely an error page from Vercel/Server
-                const text = await response.text();
-                console.error('Server response:', text);
-                throw new Error('Server returned an invalid response. Please try again later.');
-            }
-
-            if (!response.ok) {
-                throw new Error(data.error || 'Failed to parse resume');
-            }
+            // Client-side parsing - no server needed!
+            const data = await parseResumeFile(file);
 
             setResumeData(data);
             setStatus('Success!');
@@ -62,12 +34,7 @@ export function ResumeImporter() {
         } catch (error) {
             console.error('Error importing resume:', error);
             setStatus(`Error: ${error.message}`);
-
-            if (error.message.includes('Failed to fetch')) {
-                alert('Cannot connect to server. If running locally, make sure the Node.js server is running.');
-            } else {
-                alert(error.message || 'Failed to import resume. Please try again.');
-            }
+            alert(error.message || 'Failed to import resume. Please try again.');
         } finally {
             setIsUploading(false);
             if (fileInputRef.current) {

@@ -2,6 +2,7 @@ import formidable from 'formidable';
 import fs from 'fs';
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import mammoth from 'mammoth';
+import os from 'os';
 
 export const config = {
     api: {
@@ -206,13 +207,18 @@ export default async function handler(req, res) {
     }
 
     try {
+        // Ensure we use the system temp directory which is writable in Vercel
+        const uploadDir = os.tmpdir();
+
         const form = formidable({
             maxFileSize: 10 * 1024 * 1024,
             allowEmptyFiles: false,
-            keepExtensions: true
+            keepExtensions: true,
+            uploadDir: uploadDir // Explicitly set upload directory
         });
 
-        // Promisify form parsing
+        console.log('Parsing form with uploadDir:', uploadDir);
+
         const [fields, files] = await new Promise((resolve, reject) => {
             form.parse(req, (err, fields, files) => {
                 if (err) reject(err);
@@ -223,6 +229,7 @@ export default async function handler(req, res) {
         const file = files.resume?.[0];
 
         if (!file) {
+            console.error('No file found in request');
             return res.status(400).json({ error: 'No file uploaded' });
         }
 
@@ -230,15 +237,25 @@ export default async function handler(req, res) {
         const filePath = file.filepath;
         const fileName = file.originalFilename || '';
 
-        console.log('Processing file:', fileName);
+        console.log('Processing file:', fileName, 'at path:', filePath);
 
         if (fileName.toLowerCase().endsWith('.pdf')) {
-            const dataBuffer = fs.readFileSync(filePath);
-            const data = await pdfParse(dataBuffer);
-            text = data.text;
+            try {
+                const dataBuffer = fs.readFileSync(filePath);
+                const data = await pdfParse(dataBuffer);
+                text = data.text;
+            } catch (e) {
+                console.error('PDF Parse Error:', e);
+                throw new Error('Failed to parse PDF file');
+            }
         } else if (fileName.toLowerCase().endsWith('.docx')) {
-            const result = await mammoth.extractRawText({ path: filePath });
-            text = result.value;
+            try {
+                const result = await mammoth.extractRawText({ path: filePath });
+                text = result.value;
+            } catch (e) {
+                console.error('DOCX Parse Error:', e);
+                throw new Error('Failed to parse DOCX file');
+            }
         } else {
             return res.status(400).json({ error: 'Please upload PDF or DOCX file' });
         }
@@ -256,9 +273,9 @@ export default async function handler(req, res) {
         return res.status(200).json(parsedData);
 
     } catch (error) {
-        console.error('Parse error:', error);
+        console.error('Critical Parse Error:', error);
         return res.status(500).json({
-            error: 'Failed to parse resume: ' + (error.message || 'Unknown error'),
+            error: 'Server Error: ' + (error.message || 'Unknown error'),
             details: error.toString()
         });
     }
